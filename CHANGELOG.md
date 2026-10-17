@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-17
+
 ### Added
 
 - `Async::Firefly::Client`, an `Async::REST::Resource` for the Firefly III v1 API.
@@ -43,8 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Async::Firefly::Failure`, raised for any unsuccessful response, with
   `#status`, `#detail`, `#exception_class`, `#errors`, `#invalid?` and
   `#retry_after` read off the body — including the field errors a `422` carries.
-  It descends from `Async::Firefly::Error`, which is the class to rescue for
-  anything this gem raises.
+  It descends from `Async::REST::ResponseError`. `Async::Firefly::Error` is the
+  other class this gem raises, for a `Page` that cannot address a member, so
+  rescuing both covers everything the gem raises.
 - Rate-limit handling in `Async::Firefly::Submit`: a `429` with a usable
   `retry-after` is retried, up to 4 attempts and a 30 second ceiling per wait.
 - `Async::Firefly::Redacted`, which masks credentials in `#inspect`: a token,
