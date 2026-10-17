@@ -1,0 +1,168 @@
+#!/usr/bin/env ruby
+
+require "json"
+require "net/http"
+require "open3"
+require "uri"
+
+module Bootstrap
+  PORT = ENV.fetch("FIREFLY_PORT", "8081")
+
+  SITE = ENV.fetch("FIREFLY_SITE", "http://localhost:#{PORT}")
+
+  URL = ENV.fetch("FIREFLY_URL", "#{SITE}/api/")
+
+  EMAIL = ENV.fetch("FIREFLY_EMAIL", "tester@example.com")
+
+  PASSWORD = ENV.fetch("FIREFLY_PASSWORD", "test-password-123")
+
+  TITLE = "async-firefly integration tests"
+
+  COOKIES = {}
+
+  def self.request(method, path, body = nil, json: false, token: nil)
+    uri = URI.join(SITE, path)
+    request = method.new(uri)
+
+    unless COOKIES.empty?
+      request["cookie"] = COOKIES.map{|name, value| name + "=" + value}.join("; ")
+    end
+
+    if json
+      request["accept"] = "application/json"
+    else
+      request["accept"] = "text/html"
+    end
+
+    if token
+      request["x-csrf-token"] = token
+      request["x-requested-with"] = "XMLHttpRequest"
+    end
+
+    if body && json
+      request["content-type"] = "application/json"
+      request.body = ::JSON.dump(body)
+    elsif body
+      request.set_form_data(body)
+    end
+
+    self.remember(Net::HTTP.start(uri.hostname, uri.port){|http| http.request(request)})
+  end
+
+  def self.remember(response)
+    Array(response.get_fields("set-cookie")).each do |cookie|
+      name, value = cookie.split(";").first.split("=", 2)
+      COOKIES[name] = value
+    end
+
+    response
+  end
+
+  def self.token_in(body)
+    body[/name="_token"\s+value="([^"]+)"/, 1] || body[/csrf-token" content="([^"]+)"/, 1]
+  end
+
+  def self.csrf_for(path)
+    response = self.request(Net::HTTP::Get, path)
+    found = self.token_in(response.body.to_s)
+
+    unless found
+      abort "GET #{path} carried no CSRF token: #{response.code}"
+    end
+
+    found
+  end
+
+  def self.register
+    response = self.request(Net::HTTP::Get, "/register")
+    token = self.token_in(response.body.to_s)
+
+    if token
+      self.request(Net::HTTP::Post, "/register", {
+        "email" => EMAIL,
+        "password" => PASSWORD,
+        "password_confirmation" => PASSWORD,
+        "_token" => token,
+      })
+    end
+  end
+
+  def self.authenticated?
+    self.request(Net::HTTP::Get, "/profile").code == "200"
+  end
+
+  def self.personal_client
+    output, status = Open3.capture2e(
+      "docker", "compose", "exec", "-T", "firefly",
+      "php", "artisan", "passport:client", "--personal", "--name=" + TITLE, "--no-interaction",
+    )
+
+    unless status.success? || output.include?("already")
+      abort "could not create the personal access client: #{output}"
+    end
+  end
+
+  def self.sign_in
+    token = self.csrf_for("/login")
+
+    response = self.request(Net::HTTP::Post, "/login", {
+      "email" => EMAIL,
+      "password" => PASSWORD,
+      "_token" => token,
+      "remember" => "1",
+    })
+
+    unless response.code.start_with?("2", "3")
+      abort "could not sign in as #{EMAIL}: #{response.code}"
+    end
+  end
+
+  def self.issue
+    token = self.csrf_for("/profile")
+
+    response = self.request(Net::HTTP::Post, "/oauth/personal-access-tokens", {
+      "name" => TITLE,
+      "scopes" => [],
+    }, json: true, token: token)
+
+    unless response.code.start_with?("2")
+      abort "could not issue a personal access token: #{response.code} #{response.body.to_s[0, 400]}"
+    end
+
+    ::JSON.parse(response.body, symbolize_names: true).fetch(:accessToken)
+  end
+
+  def self.verify(token)
+    uri = URI.join(URL, "v1/about")
+    request = Net::HTTP::Get.new(uri)
+    request["accept"] = "application/vnd.api+json"
+    request["authorization"] = "Bearer " + token
+
+    response = Net::HTTP.start(uri.hostname, uri.port){|http| http.request(request)}
+
+    unless response.code == "200"
+      abort "the token does not read #{uri}: #{response.code} #{response.body.to_s[0, 200]}"
+    end
+
+    ::JSON.parse(response.body, symbolize_names: true).dig(:data, :version)
+  end
+
+  def self.call
+    self.personal_client
+    self.register
+
+    unless self.authenticated?
+      self.sign_in
+    end
+
+    token = self.issue
+    version = self.verify(token)
+
+    warn "about: Firefly III " + version.to_s
+
+    puts "export FIREFLY_URL=" + URL
+    puts "export FIREFLY_TOKEN=" + token
+  end
+end
+
+Bootstrap.call

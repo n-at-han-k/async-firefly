@@ -1,0 +1,83 @@
+name: OpenAPI
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PUBLISHER: https://api-docs.firefly-iii.org
+  AGENT: async-firefly (https://github.com/n-at-han-k/async-firefly)
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      version: ${{ steps.extract.outputs.version }}
+      changed: ${{ steps.commit.outputs.changed }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find the newest published document
+        id: published
+        run: |
+          curl --fail --silent --show-error --user-agent "$AGENT" "$PUBLISHER/" > index.html
+
+          name="$(grep -oE 'firefly-iii-v[0-9.]+-v1\.yaml' index.html | sort -V | uniq | tail -1)"
+          rm index.html
+
+          if [ -z "$name" ]; then
+            echo "$PUBLISHER lists no firefly-iii-v<version>-v1.yaml"
+            exit 1
+          fi
+
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Newest published document: $name"
+
+      - name: Fetch it
+        id: extract
+        run: |
+          curl --fail --silent --show-error --user-agent "$AGENT" \
+            "$PUBLISHER/${{ steps.published.outputs.name }}" > document.yaml
+
+          ruby -ryaml -e '
+            document = YAML.safe_load(File.read("document.yaml"), aliases: true)
+            paths = document.fetch("paths").size
+            schemas = document.fetch("components").fetch("schemas").size
+            version = document.fetch("info").fetch("version")
+            named = ARGV[0][/firefly-iii-(v[0-9.]+)-v1\.yaml/, 1]
+            abort "the document describes #{paths} paths and #{schemas} schemas, which is too few to be whole" unless paths > 100 && schemas > 100
+            abort "#{ARGV[0]} describes #{version}, not #{named}" unless version == named
+            File.write(ENV.fetch("GITHUB_OUTPUT"), "version=#{version}\n", mode: "a")
+          ' "${{ steps.published.outputs.name }}"
+
+          mv document.yaml data/openapi-v1.yaml
+
+      - name: Commit it if it differs
+        id: commit
+        run: |
+          if git diff --quiet -- data/openapi-v1.yaml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            echo "The document is already what ${{ steps.extract.outputs.version }} publishes."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --quiet -m "Update the OpenAPI document to ${{ steps.extract.outputs.version }}" -- data/openapi-v1.yaml
+            git push --quiet
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            git show --stat --oneline HEAD
+          fi
+
+  document:
+    needs: extract
+    uses: ./.github/workflows/document.yaml
+    with:
+      ref: ${{ needs.extract.outputs.sha }}

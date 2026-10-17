@@ -1,0 +1,6 @@
+/.bundle/
+/.direnv/
+/coverage/
+/pkg/
+/tmp/
+*.gem

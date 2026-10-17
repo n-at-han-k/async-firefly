@@ -1,0 +1,203 @@
+plugins:
+  - rubocop-socketry
+
+require:
+  - ./cops/begin_block_assignment.rb
+  - ./cops/no_conditional_assignment.rb
+  - ./cops/no_modifier_if.rb
+  - ./cops/no_return.rb
+  - ./cops/use_tap.rb
+  - ./cops/comment_structure.rb
+  - ./cops/single_line_methods_for_events.rb
+  - ./cops/entity_has_representation.rb
+  - ./cops/accessor_matches_schema.rb
+  - ./cops/accessor_names_property.rb
+  - ./cops/class_level_verb_checks_status.rb
+  - ./cops/create_identifies_resource.rb
+  - ./cops/name_read_off_library.rb
+  - ./cops/shadowed_constant.rb
+
+inherit_from:
+  - .rubocop_todo.yml
+
+AllCops:
+  DisabledByDefault: true
+
+AsyncFirefly/EntityHasRepresentation:
+  Enabled: true
+  Include:
+    - "lib/async/firefly.rb"
+
+AsyncFirefly/AccessorMatchesSchema:
+  Enabled: true
+  Include:
+    - "lib/**/*.rb"
+
+AsyncFirefly/AccessorNamesProperty:
+  Enabled: true
+  Include:
+    - "lib/**/*.rb"
+
+AsyncFirefly/ClassLevelVerbChecksStatus:
+  Enabled: true
+  Include:
+    - "lib/**/*.rb"
+
+AsyncFirefly/NameReadOffLibrary:
+  Enabled: true
+  Include:
+    - "test/**/*.rb"
+    - "fixtures/**/*.rb"
+
+AsyncFirefly/CreateIdentifiesResource:
+  Enabled: true
+  Include:
+    - "lib/**/*.rb"
+
+AsyncFirefly/ShadowedConstant:
+  Enabled: true
+  Include:
+    - "lib/**/*.rb"
+    - "fixtures/**/*.rb"
+    - "test/**/*.rb"
+
+Layout/ConsistentBlankLineIndentation:
+  Enabled: false
+
+Layout/BlockDelimiterSpacing:
+  Enabled: true
+
+Style/GlobalExceptionVariables:
+  Enabled: true
+
+Layout/IndentationStyle:
+  Enabled: true
+  EnforcedStyle: spaces
+
+Layout/InitialIndentation:
+  Enabled: true
+
+Layout/IndentationWidth:
+  Enabled: true
+  Width: 2
+
+Layout/IndentationConsistency:
+  Enabled: true
+  EnforcedStyle: normal
+
+Layout/BlockAlignment:
+  Enabled: true
+
+Layout/EndAlignment:
+  Enabled: true
+  EnforcedStyleAlignWith: start_of_line
+
+Layout/BeginEndAlignment:
+  Enabled: true
+  EnforcedStyleAlignWith: start_of_line
+
+Layout/RescueEnsureAlignment:
+  Enabled: true
+
+Layout/ElseAlignment:
+  Enabled: true
+
+Layout/DefEndAlignment:
+  Enabled: true
+
+Layout/CaseIndentation:
+  Enabled: true
+  EnforcedStyle: end
+
+Layout/CommentIndentation:
+  Enabled: true
+
+Layout/FirstHashElementIndentation:
+  Enabled: true
+  EnforcedStyle: consistent
+
+Layout/EmptyLinesAroundClassBody:
+  Enabled: true
+
+Layout/EmptyLinesAroundModuleBody:
+  Enabled: true
+
+Layout/EmptyLineAfterMagicComment:
+  Enabled: true
+
+Layout/SpaceInsideBlockBraces:
+  Enabled: true
+  EnforcedStyle: no_space
+  SpaceBeforeBlockParameters: false
+
+Layout/SpaceAroundBlockParameters:
+  Enabled: true
+  EnforcedStyleInsidePipes: no_space
+
+Layout/FirstArrayElementIndentation:
+  Enabled: true
+  EnforcedStyle: consistent
+
+Layout/ArrayAlignment:
+  Enabled: true
+  EnforcedStyle: with_fixed_indentation
+
+Layout/FirstArgumentIndentation:
+  Enabled: true
+  EnforcedStyle: consistent
+
+Layout/ArgumentAlignment:
+  Enabled: true
+  EnforcedStyle: with_fixed_indentation
+
+Layout/ClosingParenthesisIndentation:
+  Enabled: true
+
+Layout/TrailingWhitespace:
+  Enabled: true
+
+Style/FrozenStringLiteralComment:
+  Enabled: false
+
+Style/StringLiterals:
+  Enabled: true
+  EnforcedStyle: double_quotes
+
+Local/BeginBlockAssignment:
+  Enabled: true
+
+Local/NoConditionalAssignment:
+  Enabled: true
+
+Local/NoModifierIf:
+  Enabled: true
+
+Local/NoReturn:
+  Enabled: true
+
+Local/UseTap:
+  Enabled: true
+
+Local/CommentStructure:
+  Enabled: true
+
+  MaximumWords: 30
+  BaseWords: 10
+  WordsPerLine: 3
+  ModuleWords: 10
+
+  Wrapping:
+    Enabled: true
+    Exclude:
+      - "bin/*"
+
+  Length:
+    Enabled: true
+    Exclude:
+      - "bin/*"
+
+  Annotations:
+    Enabled: true
+    Include:
+      - "lib/**/*.rb"
+      - "fixtures/**/*.rb"

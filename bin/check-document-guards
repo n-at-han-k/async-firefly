@@ -1,0 +1,132 @@
+#!/usr/bin/env ruby
+
+require "tmpdir"
+require "yaml"
+
+module Guards
+  CANARY = "GuardCanary"
+
+  ROUTE = "/v1/guard-canary"
+
+  ROOT = ::File.expand_path("..", __dir__)
+
+  DOCUMENT = ::File.join(ROOT, "data", "openapi-v1.yaml")
+
+  TARGET = "lib/async/firefly.rb"
+
+  COP = "AsyncFirefly/EntityHasRepresentation"
+
+  RUBOCOP = ["bundle", "exec", "rubocop", "--cache", "false", "--only", COP].freeze
+
+  SUS = ["bundle", "exec", "sus", "test/async/firefly/conformance.rb"].freeze
+
+  def self.mutated
+    ::YAML.safe_load(::File.read(DOCUMENT), aliases: true).tap do |document|
+      document.fetch("components").fetch("schemas")[CANARY] = {
+        "type" => "object",
+        "properties" => {"id" => {"type" => "string"}},
+      }
+
+      document.fetch("paths")[ROUTE] = {
+        "get" => {
+          "operationId" => "guardCanary",
+          "tags" => ["about"],
+          "responses" => {
+            "200" => {
+              "description" => "OK",
+              "content" => {
+                "application/vnd.api+json" => {
+                  "schema" => {"$ref" => "#/components/schemas/" + CANARY},
+                },
+              },
+            },
+          },
+        },
+      }
+    end
+  end
+
+  def self.configuration_for(document)
+    "inherit_from: " + ::File.join(ROOT, ".rubocop.yml") + "\n" \
+      "\n" \
+      + COP + ":\n" \
+      "  DocumentPath: " + document + "\n" \
+      "  Include:\n" \
+      "    - " + ::File.join(ROOT, TARGET) + "\n"
+  end
+
+  def self.entity_check(directory, name, document)
+    config = ::File.join(directory, name + ".yml")
+
+    ::File.write(config, self.configuration_for(document))
+
+    self.capture([*RUBOCOP, "--config", config, TARGET], {})
+  end
+
+  def self.route_check(document)
+    self.capture(SUS, {"FIREFLY_OPENAPI" => document})
+  end
+
+  def self.capture(command, environment)
+    output = ::IO.popen(environment, command, err: [:child, :out], &:read)
+
+    {success: $?.success?, output: output}
+  end
+
+  def self.problems_with(clean, canary)
+    [].tap do |problems|
+      clean.each do |name, result|
+        unless result.fetch(:success)
+          problems << "the document as committed fails the " + name.to_s + " guard, so it cannot be trusted:\n" + result.fetch(:output)
+        end
+      end
+
+      {entity: CANARY, route: ROUTE}.each do |name, expected|
+        result = canary.fetch(name)
+
+        if result.fetch(:success)
+          problems << "the " + name.to_s + " guard passed a document it should have failed:\n" + result.fetch(:output)
+        end
+
+        unless result.fetch(:output).include?(expected)
+          problems << "the " + name.to_s + " guard did not name `" + expected + "`:\n" + result.fetch(:output)
+        end
+      end
+    end
+  end
+
+  def self.call
+    Dir.chdir(ROOT) do
+      Dir.mktmpdir("document-guards") do |directory|
+        canary = ::File.join(directory, "openapi.yaml")
+
+        ::File.write(canary, ::YAML.dump(self.mutated))
+
+        clean = {
+          entity: self.entity_check(directory, "clean", DOCUMENT),
+          route: self.route_check(DOCUMENT),
+        }
+
+        mutated = {
+          entity: self.entity_check(directory, "canary", canary),
+          route: self.route_check(canary),
+        }
+
+        self.report(self.problems_with(clean, mutated))
+      end
+    end
+  end
+
+  def self.report(problems)
+    if problems.empty?
+      $stdout.puts "entity guard: a schema answered by an operation with no `< Representation` raises " + COP + "."
+      $stdout.puts "route guard: a documented route no client method reaches fails test/async/firefly/conformance.rb."
+    else
+      problems.each{|problem| $stderr.puts problem}
+
+      exit 1
+    end
+  end
+end
+
+Guards.call
